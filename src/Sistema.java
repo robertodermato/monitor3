@@ -489,6 +489,94 @@ public class Sistema {
             return true;
         }
     }
+
+
+
+    // tirar o static daqui
+
+    public static class GerenciadorMemoria {
+
+        private Word[] mem;
+        private int tamPagina;
+        private int tamFrame;
+        private int nroFrames;
+        private boolean[] tabelaPaginas;
+
+        public GerenciadorMemoria(Word[] mem) {
+            this.mem = mem;
+            tamPagina = 16;
+            tamFrame = tamPagina;
+            nroFrames = mem.length/ tamPagina;
+            tabelaPaginas = initFrames();
+        }
+
+        private boolean[] initFrames() {
+            boolean[] free = new boolean[nroFrames];
+            for(int i = 0; i< nroFrames; i++){
+                free[i] = true;
+            }
+            return free;
+        }
+
+        public void dump(Word w) {
+            System.out.print("[ ");
+            System.out.print(w.opc); System.out.print(", ");
+            System.out.print(w.r1);  System.out.print(", ");
+            System.out.print(w.r2);  System.out.print(", ");
+            System.out.print(w.p);  System.out.println("  ] ");
+        }
+
+        public void dumpMem (Word[] m, int ini, int fim) {
+            for (int i = ini; i < fim; i++) {
+                System.out.print(i); System.out.print(":  ");  dump(m[i]);
+            }
+        }
+
+        // retorna null se não conseguir alocar, ou um array com os frames alocadas
+        public int[] aloca(Word[] programa){
+            int quantidadePaginas = programa.length / tamPagina;
+            if(programa.length % tamPagina > 0) quantidadePaginas++; // vê se ainda tem código além da divisão inteira
+            int[] framesAlocados = new int[quantidadePaginas];
+            int indiceAlocado = 0;
+            int indicePrograma = 0;   //indice do programa
+
+            for(int i = 0; i< nroFrames; i++){
+                if(quantidadePaginas == 0) break;
+                if(tabelaPaginas[i]){ //vê se o frame está vazio e aloca o programa ali
+                    tabelaPaginas[i] = false; // marca o frame como ocupado
+
+                    for (int j = tamPagina * i; j < tamPagina * (i + 1); j++) {
+                        if(indicePrograma >= programa.length) break;
+                        mem[j].opc = programa[indicePrograma].opc;
+                        mem[j].r1 = programa[indicePrograma].r1;
+                        mem[j].r2 = programa[indicePrograma].r2;
+                        mem[j].p = programa[indicePrograma].p;
+                        indicePrograma++;
+                    }
+                    framesAlocados[indiceAlocado] = i;
+                    indiceAlocado++;
+                    quantidadePaginas--;
+                }
+            }
+
+            return framesAlocados;
+        }
+
+        /*
+        public void desaloca(PCB processo){
+            int[] pages = processo.getAllocatedPages();
+            for(int i = 0; i < pages.length; i ++) {
+                tabelaPaginas[pages[i]] = true;
+                for (int j = tamPagina * pages[i]; j < tamPagina * (pages[i] + 1); j++) {
+                    mem[j].opCode = Opcode.___;
+                    mem[j].r1 = -1;
+                    mem[j].r2 = -1;
+                    mem[j].param = -1;
+                }
+            }
+        }
+         */
+    }
     // -------------------------------------------
 
 
@@ -527,6 +615,15 @@ public class Sistema {
     // ------------------- instancia e testa sistema
     public static void main(String args[]) {
         Sistema s = new Sistema();
+
+        /*
+        Testes do GM - para funcionar tem que deixar o GM como static
+        GerenciadorMemoria gm = new GerenciadorMemoria(s.vm.m);
+        gm.aloca(progs.fatorial);
+        gm.aloca(progs.bubbleSort);
+        gm.dumpMem(s.vm.m, 0, 200);
+         */
+
         // Desenvolvidos pelo professor
         //s.roda(progs.fibonacci10);           // "progs" significa acesso/referencia ao programa em memoria secundaria
         //s.roda(progs.progMinimo);
@@ -539,7 +636,7 @@ public class Sistema {
 
         // Fase 2 - Testes de Interrupções
         //s.roda(progs.invalidAddressTest);
-        s.roda(progs.overflowTest);
+        //s.roda(progs.overflowTest);
         //s.roda(progs.invalidRegisterTest);
 
         // Fase 3 - Testes de Chamadas de Sistema
