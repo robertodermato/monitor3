@@ -14,6 +14,7 @@ import java.util.Scanner;
 
 public class Sistema {
 
+
     // -------------------------------------------------------------------------------------------------------
     // --------------------- H A R D W A R E - definicoes de HW ----------------------------------------------
 
@@ -142,8 +143,10 @@ public class Sistema {
             while (run) {            // ciclo de instrucoes. acaba cfe instrucao, veja cada caso.
                 // FETCH
                 ir = m[pc];    // busca posicao da memoria apontada por pc, guarda em ir
-                //if debug
-                showState();
+
+                //só para debug
+                //showState();
+
                 // EXECUTA INSTRUCAO NO ir
                 switch (ir.opc) { // para cada opcode, sua execução
 
@@ -610,126 +613,59 @@ public class Sistema {
         private GerenciadorMemoria gm;
         private Word[] memory;
         private LinkedList<PCB> prontos;
-        //private Semaphore escSemaforo;
-        private int process_id = 0;
-        //private Escalonador escalonador;
-        //private Semaphore mutex = new Semaphore(1);
+        private int process_id;
 
         public GerenciadorProcessos() {
-
+            process_id=0;
         }
 
         public void setAttributes(GerenciadorMemoria gm, Word[] memory, LinkedList<PCB> prontos) {
             this.gm = gm;
             this.memory = memory;
             this.prontos = prontos;
-            //this.escSemaforo = escSemaforo;
-            //this.escalonador = escalonador;
         }
 
-    /*solicita memoria, carrega imagem processo, cria pcb, coloca na fila de prontos
-        se não ha processo rodando, libera o escalonador*/
+        public boolean criaProcesso(Word [] programa){
+            System.out.println("Processo " + process_id + " criado");
+            int[] paginasAlocadas = gm.aloca(programa);
 
-
-            public boolean criaProcesso(Word [] programa){
-                int[] allocatedPages = gm.aloca(programa);
-
-                // Se o processo não foi criado por falta de memória, retorna falso
-                if (allocatedPages[0]==-1){
-                    return false;
-                }
-
-                PCB processo = new PCB(process_id, allocatedPages);
-                process_id++;
-                prontos.add(processo);
-                return true;
+            // Se o processo não foi criado por falta de memória, retorna falso
+            if (paginasAlocadas[0]==-1){
+                return false;
             }
 
-
-            public void finalizaProcesso(PCB process){
-                gm.desaloca(process);
-                prontos.remove(process);
-            }
-
-
-
-
-        /*Funções auxiliares privadas */
-
-        private Word[] assembly(String arquivo) {
-            String path = "src/in/" + arquivo;
-            int size = getFileSize(path);
-            Word[] programa = new Word[size];
-            int line = 0;
-            try {
-                File myObj = new File(path);
-                Scanner myReader = new Scanner(myObj);
-                while (myReader.hasNextLine()) {
-                    String[] data = myReader.nextLine().replaceAll("\\s+", "").split(",");
-                    Opcode code = Opcode.valueOf(data[0]);
-                    int r1 = Integer.parseInt(data[1]);
-                    int r2 = Integer.parseInt(data[2]);
-                    int param = Integer.parseInt(data[3]);
-                    programa[line] = new Word(code, r1, r2, param);
-                    line++;
-                }
-                myReader.close();
-            } catch (FileNotFoundException e) {
-                System.out.println("An error occurred.");
-                e.printStackTrace();
-            }
-            return programa;
+            PCB processo = new PCB(process_id, paginasAlocadas);
+            process_id++;
+            prontos.add(processo);
+            return true;
         }
 
-        private int getFileSize(String path) {
-            int line = 0;
-            try {
-                File myObj = new File(path);
-                Scanner myReader = new Scanner(myObj);
-                while (myReader.hasNextLine()) {
-                    myReader.nextLine();
-                    line++;
-                }
-                myReader.close();
-            } catch (FileNotFoundException e) {
-                System.out.println("An error occurred.");
-                e.printStackTrace();
-            }
-            return line;
-        }
 
+        public void finalizaProcesso(PCB processo){
+            gm.desaloca(processo);
+            prontos.remove(processo);
+        }
     }
 
 
     public class PCB {
 
-            private int id;
-            private int[] paginasAlocadas;
-            //private Context context;
+        private int id;
+        private int[] paginasAlocadas;
 
-            public PCB(int id, int[]paginasAlocadas) {
-                this.id= id;
-                this.paginasAlocadas = paginasAlocadas;
-                //this.context = new Context(0,1024,paginasAlocadas,new int[8], 0, new Word(Opcode.___,-1,-1,-1));
-            }
-            public int[] getPaginasAlocadas(){
-                return this.paginasAlocadas;
-            }
+        public PCB(int id, int[]paginasAlocadas) {
+            this.id= id;
+            this.paginasAlocadas = paginasAlocadas;
+        }
 
-            public int getId(){
-                return this.id;
-            }
+        public int[] getPaginasAlocadas(){
+            return this.paginasAlocadas;
+        }
 
-/*
-            public Context getContext() {
-                return context;
-            }
+        public int getId(){
+            return this.id;
+        }
 
-            public void saveContext(Context context){
-                this.context = context;
-            }
-
- */
     }
 
     // -------------------------------------------
@@ -745,16 +681,27 @@ public class Sistema {
     public static Programas progs;
     public GerenciadorMemoria gm;
     public GerenciadorProcessos gp;
+    private LinkedList<PCB> prontos;
+    private LinkedList<PCB> bloqueados;
 
     public Sistema(){   // a VM com tratamento de interrupções
         vm = new VM();
         monitor = new Monitor();
         progs = new Programas();
         gm = new GerenciadorMemoria(vm.m);
+        gp = new GerenciadorProcessos();
+        prontos = new LinkedList();
+
+        gp.setAttributes(gm, vm.m, prontos);
     }
 
     public void roda(Word[] programa){
-        monitor.carga(programa, vm.m);
+        //monitor.carga(programa, vm.m);
+        if (gp.criaProcesso(programa)==false){
+            System.out.println("Falta memoria para rodar o programa");
+            return;
+        }
+
         System.out.println("---------------------------------- programa carregado ");
 
         monitor.dump(vm.m, 0, programa.length);
@@ -785,12 +732,13 @@ public class Sistema {
         // Desenvolvidos pelo professor
         //s.roda(progs.fibonacci10);           // "progs" significa acesso/referencia ao programa em memoria secundaria
         //s.roda(progs.progMinimo);
-        //s.roda(progs.fatorial);
 
         // Fase 1
+        //s.roda(progs.fatorial);
         //s.roda(progs.fibonacci2);
         //s.roda(progs.fatorial2);
-        //s.roda(progs.bubbleSort);
+        s.roda(progs.bubbleSort);
+        s.roda(progs.bubbleSort);
 
         // Fase 2 - Testes de Interrupções
         //s.roda(progs.invalidAddressTest);
