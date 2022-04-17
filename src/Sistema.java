@@ -512,6 +512,7 @@ public class Sistema {
         private int tamFrame;
         private int nroFrames;
         private boolean[] tabelaPaginas;
+        private int quantidadeDePaginasUsadas; // só para debug
 
         public GerenciadorMemoria(Word[] mem) {
             this.mem = mem;
@@ -519,6 +520,7 @@ public class Sistema {
             tamFrame = tamPagina;
             nroFrames = mem.length / tamPagina;
             tabelaPaginas = initFrames();
+            quantidadeDePaginasUsadas = 0;
         }
 
         private boolean[] initFrames() {
@@ -543,6 +545,15 @@ public class Sistema {
 
         public void dumpMem(Word[] m, int ini, int fim) {
             for (int i = ini; i < fim; i++) {
+                System.out.print(i);
+                System.out.print(":  ");
+                dump(m[i]);
+            }
+        }
+
+        public void dumpMemoriaUsada(Word[] m, int fim) {
+            fim = quantidadeDePaginasUsadas * tamPagina;
+            for (int i = 0; i < fim; i++) {
                 System.out.print(i);
                 System.out.print(":  ");
                 dump(m[i]);
@@ -589,6 +600,7 @@ public class Sistema {
                 }
 
             }
+            quantidadeDePaginasUsadas = quantidadeDePaginasUsadas + framesAlocados.length;
 
             return framesAlocados;
         }
@@ -637,6 +649,13 @@ public class Sistema {
             PCB processo = new PCB(process_id, paginasAlocadas);
             process_id++;
             prontos.add(processo);
+
+            //debug
+            System.out.println("Páginas alocadas");
+            for (int i=0; i<paginasAlocadas.length; i++){
+                System.out.println(paginasAlocadas[i] + " ");
+            }
+
             return true;
         }
 
@@ -704,12 +723,14 @@ public class Sistema {
 
         System.out.println("---------------------------------- programa carregado ");
 
-        monitor.dump(vm.m, 0, programa.length);
+        //monitor.dump(vm.m, 0, programa.length);
+        gm.dumpMemoriaUsada(vm.m, gm.quantidadeDePaginasUsadas);
 
         monitor.executa();
         System.out.println("---------------------------------- após execucao ");
 
-        monitor.dump(vm.m, 0, programa.length);
+        //monitor.dump(vm.m, 0, programa.length);
+        gm.dumpMemoriaUsada(vm.m, gm.quantidadeDePaginasUsadas);
 
     }
 
@@ -734,9 +755,10 @@ public class Sistema {
         //s.roda(progs.progMinimo);
 
         // Fase 1
-        //s.roda(progs.fatorial);
+        s.roda(progs.fatorial);
         //s.roda(progs.fibonacci2);
         //s.roda(progs.fatorial2);
+        //s.roda(progs.bubbleSort);
         s.roda(progs.bubbleSort);
         s.roda(progs.bubbleSort);
 
