@@ -6,7 +6,12 @@
 //
 
 
-import java.util.*;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.util.LinkedList;
+import java.util.Scanner;
+
+
 public class Sistema {
 
     // -------------------------------------------------------------------------------------------------------
@@ -15,14 +20,17 @@ public class Sistema {
     // -------------------------------------------------------------------------------------------------------
     // --------------------- M E M O R I A -  definicoes de opcode e palavra de memoria ----------------------
 
-    public class Word { 	// cada posicao da memoria tem uma instrucao (ou um dado)
-        public Opcode opc; 	//
-        public int r1; 		// indice do primeiro registrador da operacao (Rs ou Rd cfe opcode na tabela)
-        public int r2; 		// indice do segundo registrador da operacao (Rc ou Rs cfe operacao)
-        public int p; 		// parametro para instrucao (k ou A cfe operacao), ou o dado, se opcode = DADO
+    public class Word {    // cada posicao da memoria tem uma instrucao (ou um dado)
+        public Opcode opc;    //
+        public int r1;        // indice do primeiro registrador da operacao (Rs ou Rd cfe opcode na tabela)
+        public int r2;        // indice do segundo registrador da operacao (Rc ou Rs cfe operacao)
+        public int p;        // parametro para instrucao (k ou A cfe operacao), ou o dado, se opcode = DADO
 
         public Word(Opcode _opc, int _r1, int _r2, int _p) {
-            opc = _opc;   r1 = _r1;    r2 = _r2;	p = _p;
+            opc = _opc;
+            r1 = _r1;
+            r2 = _r2;
+            p = _p;
         }
     }
     // -------------------------------------------------------------------------------------------------------
@@ -31,7 +39,7 @@ public class Sistema {
     // --------------------- C P U  -  definicoes da CPU -----------------------------------------------------
 
     public enum Opcode {
-        DATA, ___,		    // se memoria nesta posicao tem um dado, usa DATA, se não usada é NULO ___
+        DATA, ___,            // se memoria nesta posicao tem um dado, usa DATA, se não usada é NULO ___
         JMP, JMPI, JMPIG, JMPIL, JMPIE, JMPIM, JMPIGM, JMPILM, JMPIEM, STOP,   // desvios e parada
         ADDI, SUBI, ADD, SUB, MULT,             // matemáticos
         LDI, LDD, STD, LDX, STX, SWAP,          // movimentação
@@ -48,10 +56,11 @@ public class Sistema {
 
     public class CPU {
         // característica do processador: contexto da CPU ...
-        private int pc; 			// ... composto de program counter,
-        private Word ir; 			// instruction register,
-        private int[] reg;       	// registradores da CPU
+        private int pc;            // ... composto de program counter,
+        private Word ir;            // instruction register,
+        private int[] reg;        // registradores da CPU
         public int maxInt;          // criado para podermos simular overflow
+        private int[] paginasAlocadas;
 
         // cria variável interrupção
         public Interrupts interrupts;
@@ -59,8 +68,8 @@ public class Sistema {
         private Word[] m;   // CPU acessa MEMORIA, guarda referencia 'm' a ela. memoria nao muda. ee sempre a mesma.
 
         public CPU(Word[] _m) {     // ref a MEMORIA e interrupt handler passada na criacao da CPU
-            m = _m; 				// usa o atributo 'm' para acessar a memoria.
-            reg = new int[10]; 		// aloca o espaço dos registradores
+            m = _m;                // usa o atributo 'm' para acessar a memoria.
+            reg = new int[10];        // aloca o espaço dos registradores
             maxInt = 100_000;          // números aceitos -100_000 até 100_000
         }
 
@@ -71,21 +80,38 @@ public class Sistema {
 
         private void dump(Word w) {
             System.out.print("[ ");
-            System.out.print(w.opc); System.out.print(", ");
-            System.out.print(w.r1);  System.out.print(", ");
-            System.out.print(w.r2);  System.out.print(", ");
-            System.out.print(w.p);  System.out.println("  ] ");
+            System.out.print(w.opc);
+            System.out.print(", ");
+            System.out.print(w.r1);
+            System.out.print(", ");
+            System.out.print(w.r2);
+            System.out.print(", ");
+            System.out.print(w.p);
+            System.out.println("  ] ");
         }
 
-        private void showState(){
-            System.out.println("       "+ pc);
+        private void showState() {
+            System.out.println("       " + pc);
             System.out.print("           ");
-            for (int i=0; i<reg.length; i++) { System.out.print("r"+i);   System.out.print(": "+reg[i]+"     "); };
+            for (int i = 0; i < reg.length; i++) {
+                System.out.print("r" + i);
+                System.out.print(": " + reg[i] + "     ");
+            }
+            ;
             System.out.println("");
-            System.out.print("           ");  dump(ir);
+            System.out.print("           ");
+            dump(ir);
         }
 
-        private boolean isRegisterValid(int register){
+        public int translateMemory(int address) {
+            try {
+                return (paginasAlocadas[(address / 16)] * 16) + (address % 16);
+            } catch (ArrayIndexOutOfBoundsException e) {
+                return -1;
+            }
+        }
+
+        private boolean isRegisterValid(int register) {
             if (register < 0 || register >= reg.length) {
                 interrupts = Interrupts.INT_INVALID_INSTRUCTION;
                 return false;
@@ -109,13 +135,13 @@ public class Sistema {
             return true;
         }
 
-        public void run() { 		// execucao da CPU supoe que o contexto da CPU, vide acima, esta devidamente setado
+        public void run() {        // execucao da CPU supoe que o contexto da CPU, vide acima, esta devidamente setado
             //System.out.println("Início da execução pela CPU");
 
             boolean run = true;
-            while (run) { 			// ciclo de instrucoes. acaba cfe instrucao, veja cada caso.
+            while (run) {            // ciclo de instrucoes. acaba cfe instrucao, veja cada caso.
                 // FETCH
-                ir = m[pc]; 	// busca posicao da memoria apontada por pc, guarda em ir
+                ir = m[pc];    // busca posicao da memoria apontada por pc, guarda em ir
                 //if debug
                 showState();
                 // EXECUTA INSTRUCAO NO ir
@@ -126,18 +152,15 @@ public class Sistema {
                             reg[ir.r1] = ir.p;
                             pc++;
                             break;
-                        }
-                        else
+                        } else
                             break;
 
                     case LDD: // Rd ← [A]
-                        if (isRegisterValid(ir.r1) && isAddressValid(ir.p) && isNumberValid(m[ir.p].p))
-                        {
+                        if (isRegisterValid(ir.r1) && isAddressValid(ir.p) && isNumberValid(m[ir.p].p)) {
                             reg[ir.r1] = m[ir.p].p;
                             pc++;
                             break;
-                        }
-                        else
+                        } else
                             break;
 
                     case STD: // [A] ← Rs
@@ -146,8 +169,7 @@ public class Sistema {
                             m[ir.p].p = reg[ir.r1];
                             pc++;
                             break;
-                        }
-                        else
+                        } else
                             break;
 
                     case ADD: // Rd ← Rd + Rs
@@ -155,9 +177,7 @@ public class Sistema {
                             reg[ir.r1] = reg[ir.r1] + reg[ir.r2];
                             pc++;
                             break;
-                        }
-                        else
-                        {
+                        } else {
                             interrupts = Interrupts.INT_OVERFLOW;
                             pc++;
                             break;
@@ -173,19 +193,15 @@ public class Sistema {
                                 pc++;
                                 break;
                             }
-                        }
-                        else
+                        } else
                             break;
 
                     case ADDI: // Rd ← Rd + k
-                        if (isRegisterValid(ir.r1) && isNumberValid(reg[ir.r1]) && isNumberValid(ir.p) && isNumberValid(reg[ir.r1] + ir.p))
-                        {
+                        if (isRegisterValid(ir.r1) && isNumberValid(reg[ir.r1]) && isNumberValid(ir.p) && isNumberValid(reg[ir.r1] + ir.p)) {
                             reg[ir.r1] = reg[ir.r1] + ir.p;
                             pc++;
                             break;
-                        }
-                        else
-                        {
+                        } else {
                             interrupts = Interrupts.INT_OVERFLOW;
                             pc++;
                             break;
@@ -198,8 +214,7 @@ public class Sistema {
                             m[reg[ir.r1]].p = reg[ir.r2];
                             pc++;
                             break;
-                        }
-                        else
+                        } else
                             break;
 
                     case LDX: // Rd ← [Rs]
@@ -207,17 +222,15 @@ public class Sistema {
                             reg[ir.r1] = m[reg[ir.r2]].p;
                             pc++;
                             break;
-                        }
-                        else
+                        } else
                             break;
 
                     case SUB: // Rd ← Rd - Rs
-                        if (isRegisterValid(ir.r1) && isRegisterValid(ir.r2) && isNumberValid(reg[ir.r2]) && isNumberValid(reg[ir.r1])&& isNumberValid(reg[ir.r1] - reg[ir.r2])) {
+                        if (isRegisterValid(ir.r1) && isRegisterValid(ir.r2) && isNumberValid(reg[ir.r2]) && isNumberValid(reg[ir.r1]) && isNumberValid(reg[ir.r1] - reg[ir.r2])) {
                             reg[ir.r1] = reg[ir.r1] - reg[ir.r2];
                             pc++;
                             break;
-                        }
-                        else {
+                        } else {
                             interrupts = Interrupts.INT_OVERFLOW;
                             pc++;
                             break;
@@ -228,8 +241,7 @@ public class Sistema {
                             reg[ir.r1] = reg[ir.r1] - ir.p;
                             pc++;
                             break;
-                        }
-                        else {
+                        } else {
                             interrupts = Interrupts.INT_OVERFLOW;
                             pc++;
                             break;
@@ -239,16 +251,14 @@ public class Sistema {
                         if (isAddressValid(ir.p)) {
                             pc = ir.p;
                             break;
-                        }
-                        else
+                        } else
                             break;
 
                     case JMPI: //  PC ← Rs
                         if (isRegisterValid(ir.r1) && isAddressValid(reg[ir.r1])) {
                             pc = reg[ir.r1];
                             break;
-                        }
-                        else
+                        } else
                             break;
 
 
@@ -260,8 +270,7 @@ public class Sistema {
                                 pc++;
                             }
                             break;
-                        }
-                        else
+                        } else
                             break;
 
                     case JMPIGM: // If Rc > 0 Then PC ← [A] Else PC ← PC +1
@@ -272,8 +281,7 @@ public class Sistema {
                                 pc++;
                             }
                             break;
-                        }
-                        else
+                        } else
                             break;
 
                     case JMPILM: // If Rc < 0 Then PC ← [A] Else PC ← PC +1
@@ -284,8 +292,7 @@ public class Sistema {
                                 pc++;
                             }
                             break;
-                        }
-                        else
+                        } else
                             break;
 
                     case JMPIEM: // If Rc = 0 Then PC ← [A] Else PC ← PC +1
@@ -296,8 +303,7 @@ public class Sistema {
                                 pc++;
                             }
                             break;
-                        }
-                        else
+                        } else
                             break;
 
 
@@ -309,8 +315,7 @@ public class Sistema {
                                 pc++;
                             }
                             break;
-                        }
-                        else
+                        } else
                             break;
 
                     case JMPIL: //  PC ← Rs
@@ -321,16 +326,14 @@ public class Sistema {
                                 pc++;
                             }
                             break;
-                        }
-                        else
+                        } else
                             break;
 
                     case JMPIM: //  PC ← [A]
                         if (isAddressValid(m[ir.p].p) && isAddressValid(ir.p)) {
                             pc = m[ir.p].p;
                             break;
-                        }
-                        else
+                        } else
                             break;
 
                     case SWAP: // t <- r1; r1 <- r2; r2 <- t
@@ -341,8 +344,7 @@ public class Sistema {
                             reg[ir.r2] = temp;
                             pc++;
                             break;
-                        }
-                        else
+                        } else
                             break;
 
                     case STOP: // por enquanto, para execucao
@@ -350,7 +352,7 @@ public class Sistema {
 
                     case TRAP:
                         interrupts = Interrupts.INT_SYSTEM_CALL;
-                        pc ++;
+                        pc++;
                         break;
 
                     case DATA:
@@ -363,13 +365,11 @@ public class Sistema {
                 }
 
                 // VERIFICA INTERRUPÇÃO !!! - TERCEIRA FASE DO CICLO DE INSTRUÇÕES
-                if (ir.opc==Opcode.STOP)
-                {
+                if (ir.opc == Opcode.STOP) {
                     break; // break sai do loop da cpu
                 }
 
-                if (interrupts != Interrupts.INT_NONE)
-                {
+                if (interrupts != Interrupts.INT_NONE) {
                     run = monitor.interruptHandler(reg, m, pc, interrupts);
                     interrupts = Interrupts.INT_NONE; // sai da chamada de sistema. talvez seja preciso criar um handler pra system call
                 }
@@ -389,17 +389,20 @@ public class Sistema {
         public Word[] m;
         public CPU cpu;
 
-        public VM(){
+        public VM() {
             // memória
             tamMem = 1024;
             m = new Word[tamMem]; // m ee a memoria
-            for (int i=0; i<tamMem; i++) { m[i] = new Word(Opcode.___,-1,-1,-1); };
+            for (int i = 0; i < tamMem; i++) {
+                m[i] = new Word(Opcode.___, -1, -1, -1);
+            }
+            ;
 
             // cpu
             cpu = new CPU(m);   // cpu acessa memória
         }
 
-        public int getTamMem(){
+        public int getTamMem() {
             return tamMem;
         }
     }
@@ -417,15 +420,21 @@ public class Sistema {
     public class Monitor {
         public void dump(Word w) {
             System.out.print("[ ");
-            System.out.print(w.opc); System.out.print(", ");
-            System.out.print(w.r1);  System.out.print(", ");
-            System.out.print(w.r2);  System.out.print(", ");
-            System.out.print(w.p);  System.out.println("  ] ");
+            System.out.print(w.opc);
+            System.out.print(", ");
+            System.out.print(w.r1);
+            System.out.print(", ");
+            System.out.print(w.r2);
+            System.out.print(", ");
+            System.out.print(w.p);
+            System.out.println("  ] ");
         }
 
         public void dump(Word[] m, int ini, int fim) {
             for (int i = ini; i < fim; i++) {
-                System.out.print(i); System.out.print(":  ");  dump(m[i]);
+                System.out.print(i);
+                System.out.print(":  ");
+                dump(m[i]);
             }
         }
 
@@ -445,8 +454,8 @@ public class Sistema {
             // nao ha protecoes...  o que poderia acontecer ?
         }
 
-        public boolean interruptHandler(int [] registers, Word [] memory, int programCounter, Interrupts interrupts){
-            switch (interrupts){
+        public boolean interruptHandler(int[] registers, Word[] memory, int programCounter, Interrupts interrupts) {
+            switch (interrupts) {
                 case INT_INVALID_ADDRESS:
                     System.out.println("Endereço inválido, na linha: " + programCounter);
                     dump(memory[programCounter]);
@@ -472,7 +481,7 @@ public class Sistema {
 
                     Scanner in = new Scanner(System.in);
 
-                    if (registers[8]==1){
+                    if (registers[8] == 1) {
                         int address_destiny = registers[9];
                         System.out.println("Insira um número:");
                         int value_to_be_written = in.nextInt();
@@ -480,7 +489,7 @@ public class Sistema {
                         return true;
                     }
 
-                    if (registers[8]==2){
+                    if (registers[8] == 2) {
                         int source_adress = registers[9];
                         System.out.println("Output: " + memory[source_adress].p);
                         return true;
@@ -491,10 +500,9 @@ public class Sistema {
     }
 
 
-
     // tirar o static daqui
 
-    public static class GerenciadorMemoria {
+    public class GerenciadorMemoria {
 
         private Word[] mem;
         private int tamPagina;
@@ -506,13 +514,13 @@ public class Sistema {
             this.mem = mem;
             tamPagina = 16;
             tamFrame = tamPagina;
-            nroFrames = mem.length/ tamPagina;
+            nroFrames = mem.length / tamPagina;
             tabelaPaginas = initFrames();
         }
 
         private boolean[] initFrames() {
             boolean[] free = new boolean[nroFrames];
-            for(int i = 0; i< nroFrames; i++){
+            for (int i = 0; i < nroFrames; i++) {
                 free[i] = true;
             }
             return free;
@@ -520,33 +528,52 @@ public class Sistema {
 
         public void dump(Word w) {
             System.out.print("[ ");
-            System.out.print(w.opc); System.out.print(", ");
-            System.out.print(w.r1);  System.out.print(", ");
-            System.out.print(w.r2);  System.out.print(", ");
-            System.out.print(w.p);  System.out.println("  ] ");
+            System.out.print(w.opc);
+            System.out.print(", ");
+            System.out.print(w.r1);
+            System.out.print(", ");
+            System.out.print(w.r2);
+            System.out.print(", ");
+            System.out.print(w.p);
+            System.out.println("  ] ");
         }
 
-        public void dumpMem (Word[] m, int ini, int fim) {
+        public void dumpMem(Word[] m, int ini, int fim) {
             for (int i = ini; i < fim; i++) {
-                System.out.print(i); System.out.print(":  ");  dump(m[i]);
+                System.out.print(i);
+                System.out.print(":  ");
+                dump(m[i]);
             }
         }
 
         // retorna null se não conseguir alocar, ou um array com os frames alocadas
-        public int[] aloca(Word[] programa){
+        public int[] aloca(Word[] programa) {
             int quantidadePaginas = programa.length / tamPagina;
-            if(programa.length % tamPagina > 0) quantidadePaginas++; // vê se ainda tem código além da divisão inteira
+            if (programa.length % tamPagina > 0) quantidadePaginas++; // vê se ainda tem código além da divisão inteira
             int[] framesAlocados = new int[quantidadePaginas];
             int indiceAlocado = 0;
             int indicePrograma = 0;   //indice do programa
 
-            for(int i = 0; i< nroFrames; i++){
-                if(quantidadePaginas == 0) break;
-                if(tabelaPaginas[i]){ //vê se o frame está vazio e aloca o programa ali
+            // testa se tem espaço para alocar o programa
+            int framesLivres =0;
+            for (int i = 0; i < nroFrames; i++) {
+                if (tabelaPaginas[i]) //vê se o frame está vazio e conta 1
+                    framesLivres++;
+            }
+
+            // se não existe memória suficiente retorna um array com -1
+            if (framesLivres <= quantidadePaginas){
+                framesAlocados [0] = -1;
+                return framesAlocados;
+            }
+
+            for (int i = 0; i < nroFrames; i++) {
+                if (quantidadePaginas == 0) break;
+                if (tabelaPaginas[i]) { //vê se o frame está vazio e aloca o programa ali
                     tabelaPaginas[i] = false; // marca o frame como ocupado
 
                     for (int j = tamPagina * i; j < tamPagina * (i + 1); j++) {
-                        if(indicePrograma >= programa.length) break;
+                        if (indicePrograma >= programa.length) break;
                         mem[j].opc = programa[indicePrograma].opc;
                         mem[j].r1 = programa[indicePrograma].r1;
                         mem[j].r2 = programa[indicePrograma].r2;
@@ -557,26 +584,154 @@ public class Sistema {
                     indiceAlocado++;
                     quantidadePaginas--;
                 }
+
             }
 
             return framesAlocados;
         }
 
-        /*
         public void desaloca(PCB processo){
-            int[] pages = processo.getAllocatedPages();
-            for(int i = 0; i < pages.length; i ++) {
-                tabelaPaginas[pages[i]] = true;
-                for (int j = tamPagina * pages[i]; j < tamPagina * (pages[i] + 1); j++) {
-                    mem[j].opCode = Opcode.___;
+            int[] paginas = processo.getPaginasAlocadas();
+            for(int i = 0; i < paginas.length; i ++) {
+                tabelaPaginas[paginas[i]] = true; // libera o frame
+                // reseta as posicoes da memória
+                for (int j = tamPagina * paginas[i]; j < tamPagina * (paginas[i] + 1); j++) {
+                    mem[j].opc = Opcode.___;
                     mem[j].r1 = -1;
                     mem[j].r2 = -1;
-                    mem[j].param = -1;
+                    mem[j].p = -1;
                 }
             }
         }
-         */
+
     }
+
+    public class GerenciadorProcessos {
+        private GerenciadorMemoria gm;
+        private Word[] memory;
+        private LinkedList<PCB> prontos;
+        //private Semaphore escSemaforo;
+        private int process_id = 0;
+        //private Escalonador escalonador;
+        //private Semaphore mutex = new Semaphore(1);
+
+        public GerenciadorProcessos() {
+
+        }
+
+        public void setAttributes(GerenciadorMemoria gm, Word[] memory, LinkedList<PCB> prontos) {
+            this.gm = gm;
+            this.memory = memory;
+            this.prontos = prontos;
+            //this.escSemaforo = escSemaforo;
+            //this.escalonador = escalonador;
+        }
+
+    /*solicita memoria, carrega imagem processo, cria pcb, coloca na fila de prontos
+        se não ha processo rodando, libera o escalonador*/
+
+
+            public boolean criaProcesso(Word [] programa){
+                int[] allocatedPages = gm.aloca(programa);
+
+                // Se o processo não foi criado por falta de memória, retorna falso
+                if (allocatedPages[0]==-1){
+                    return false;
+                }
+
+                PCB processo = new PCB(process_id, allocatedPages);
+                process_id++;
+                prontos.add(processo);
+                return true;
+            }
+
+
+            public void finalizaProcesso(PCB process){
+                gm.desaloca(process);
+                prontos.remove(process);
+            }
+
+
+
+
+        /*Funções auxiliares privadas */
+
+        private Word[] assembly(String arquivo) {
+            String path = "src/in/" + arquivo;
+            int size = getFileSize(path);
+            Word[] programa = new Word[size];
+            int line = 0;
+            try {
+                File myObj = new File(path);
+                Scanner myReader = new Scanner(myObj);
+                while (myReader.hasNextLine()) {
+                    String[] data = myReader.nextLine().replaceAll("\\s+", "").split(",");
+                    Opcode code = Opcode.valueOf(data[0]);
+                    int r1 = Integer.parseInt(data[1]);
+                    int r2 = Integer.parseInt(data[2]);
+                    int param = Integer.parseInt(data[3]);
+                    programa[line] = new Word(code, r1, r2, param);
+                    line++;
+                }
+                myReader.close();
+            } catch (FileNotFoundException e) {
+                System.out.println("An error occurred.");
+                e.printStackTrace();
+            }
+            return programa;
+        }
+
+        private int getFileSize(String path) {
+            int line = 0;
+            try {
+                File myObj = new File(path);
+                Scanner myReader = new Scanner(myObj);
+                while (myReader.hasNextLine()) {
+                    myReader.nextLine();
+                    line++;
+                }
+                myReader.close();
+            } catch (FileNotFoundException e) {
+                System.out.println("An error occurred.");
+                e.printStackTrace();
+            }
+            return line;
+        }
+
+    }
+
+
+    public class PCB {
+
+            private int id;
+            private int[] paginasAlocadas;
+            //private Context context;
+
+            public PCB(int id, int[]paginasAlocadas) {
+                this.id= id;
+                this.paginasAlocadas = paginasAlocadas;
+                //this.context = new Context(0,1024,paginasAlocadas,new int[8], 0, new Word(Opcode.___,-1,-1,-1));
+            }
+            public int[] getPaginasAlocadas(){
+                return this.paginasAlocadas;
+            }
+
+            public int getId(){
+                return this.id;
+            }
+
+/*
+            public Context getContext() {
+                return context;
+            }
+
+            public void saveContext(Context context){
+                this.context = context;
+            }
+
+ */
+    }
+
     // -------------------------------------------
 
 
@@ -588,11 +743,14 @@ public class Sistema {
     public VM vm;
     public Monitor monitor;
     public static Programas progs;
+    public GerenciadorMemoria gm;
+    public GerenciadorProcessos gp;
 
     public Sistema(){   // a VM com tratamento de interrupções
         vm = new VM();
         monitor = new Monitor();
         progs = new Programas();
+        gm = new GerenciadorMemoria(vm.m);
     }
 
     public void roda(Word[] programa){
