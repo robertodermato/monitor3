@@ -62,6 +62,7 @@ public class Sistema {
         private int[] reg;        // registradores da CPU
         public int maxInt;          // criado para podermos simular overflow
         private int[] paginasAlocadas;
+        private int[] tabelaDePaginas;
 
         // cria variável interrupção
         public Interrupts interrupts;
@@ -74,9 +75,11 @@ public class Sistema {
             maxInt = 100_000;          // números aceitos -100_000 até 100_000
         }
 
-        public void setContext(int _pc) {  // no futuro esta funcao vai ter que ser
+        public void setContext(int _pc, int [] paginasAlocadas) {  // no futuro esta funcao vai ter que ser
             pc = _pc;                                   // limite e pc (deve ser zero nesta versão)
             this.interrupts = Interrupts.INT_NONE;      // inicializa interrupção com NONE
+            this.paginasAlocadas = paginasAlocadas;
+            this.tabelaDePaginas = tabelaDePaginas;
         }
 
         private void dump(Word w) {
@@ -104,13 +107,6 @@ public class Sistema {
             dump(ir);
         }
 
-        public int translateMemory(int address) {
-            try {
-                return (paginasAlocadas[(address / 16)] * 16) + (address % 16);
-            } catch (ArrayIndexOutOfBoundsException e) {
-                return -1;
-            }
-        }
 
         private boolean isRegisterValid(int register) {
             if (register < 0 || register >= reg.length) {
@@ -136,13 +132,28 @@ public class Sistema {
             return true;
         }
 
+        public int traduzEndereco (int endereco){
+            try {
+                return (paginasAlocadas[(endereco / 16)] * 16) + (endereco % 16);
+
+            } catch(ArrayIndexOutOfBoundsException e) {
+                System.out.println("Retorno -1 do traduz");
+                return -1;
+            }
+        }
+
         public void run() {        // execucao da CPU supoe que o contexto da CPU, vide acima, esta devidamente setado
             //System.out.println("Início da execução pela CPU");
 
             boolean run = true;
             while (run) {            // ciclo de instrucoes. acaba cfe instrucao, veja cada caso.
                 // FETCH
-                ir = m[pc];    // busca posicao da memoria apontada por pc, guarda em ir
+
+                //if (isAddressValid(traduzEndereco(pc))) {
+                //    ir = m[traduzEndereco(pc)];
+                //}
+
+                ir = m[traduzEndereco(pc)];    // busca posicao da memoria apontada por pc, guarda em ir
 
                 //só para debug
                 //showState();
@@ -159,17 +170,17 @@ public class Sistema {
                             break;
 
                     case LDD: // Rd ← [A]
-                        if (isRegisterValid(ir.r1) && isAddressValid(ir.p) && isNumberValid(m[ir.p].p)) {
-                            reg[ir.r1] = m[ir.p].p;
+                        if (isRegisterValid(ir.r1) && isAddressValid(traduzEndereco(ir.p)) && isNumberValid(m[ir.p].p)) {
+                            reg[ir.r1] = m[traduzEndereco(ir.p)].p;
                             pc++;
                             break;
                         } else
                             break;
 
                     case STD: // [A] ← Rs
-                        if (isRegisterValid(ir.r1) && isAddressValid(ir.p) && isNumberValid(reg[ir.r1])) {
-                            m[ir.p].opc = Opcode.DATA;
-                            m[ir.p].p = reg[ir.r1];
+                        if (isRegisterValid(ir.r1) && isAddressValid(traduzEndereco(ir.p)) && isNumberValid(reg[ir.r1])) {
+                            m[traduzEndereco(ir.p)].opc = Opcode.DATA;
+                            m[traduzEndereco(ir.p)].p = reg[ir.r1];
                             pc++;
                             break;
                         } else
@@ -212,17 +223,17 @@ public class Sistema {
 
 
                     case STX: // [Rd] ←Rs
-                        if (isRegisterValid(ir.r1) && isRegisterValid(ir.r2) && isAddressValid(reg[ir.r1])) {
-                            m[reg[ir.r1]].opc = Opcode.DATA;
-                            m[reg[ir.r1]].p = reg[ir.r2];
+                        if (isRegisterValid(ir.r1) && isRegisterValid(ir.r2) && isAddressValid(traduzEndereco(reg[ir.r1]))) {
+                            m[traduzEndereco(reg[ir.r1])].opc = Opcode.DATA;
+                            m[traduzEndereco(reg[ir.r1])].p = reg[ir.r2];
                             pc++;
                             break;
                         } else
                             break;
 
                     case LDX: // Rd ← [Rs]
-                        if (isRegisterValid(ir.r1) && isRegisterValid(ir.r2) && isAddressValid(reg[ir.r2]) && isNumberValid(m[reg[ir.r2]].p)) {
-                            reg[ir.r1] = m[reg[ir.r2]].p;
+                        if (isRegisterValid(ir.r1) && isRegisterValid(ir.r2) && isAddressValid(traduzEndereco(reg[ir.r2])) && isNumberValid(m[reg[ir.r2]].p)) {
+                            reg[ir.r1] = m[traduzEndereco(reg[ir.r2])].p;
                             pc++;
                             break;
                         } else
@@ -251,14 +262,14 @@ public class Sistema {
                         }
 
                     case JMP: //  PC ← k
-                        if (isAddressValid(ir.p)) {
+                        if (isAddressValid(traduzEndereco(ir.p))) {
                             pc = ir.p;
                             break;
                         } else
                             break;
 
                     case JMPI: //  PC ← Rs
-                        if (isRegisterValid(ir.r1) && isAddressValid(reg[ir.r1])) {
+                        if (isRegisterValid(traduzEndereco(ir.r1)) && isAddressValid(traduzEndereco(reg[ir.r1]))) {
                             pc = reg[ir.r1];
                             break;
                         } else
@@ -266,7 +277,7 @@ public class Sistema {
 
 
                     case JMPIG: // If Rc > 0 Then PC ← Rs Else PC ← PC +1
-                        if (isRegisterValid(ir.r2) && isRegisterValid(ir.r1) && isAddressValid(reg[ir.r1])) {
+                        if (isRegisterValid(ir.r2) && isRegisterValid(ir.r1) && isAddressValid(traduzEndereco(reg[ir.r1]))) {
                             if (reg[ir.r2] > 0) {
                                 pc = reg[ir.r1];
                             } else {
@@ -277,9 +288,9 @@ public class Sistema {
                             break;
 
                     case JMPIGM: // If Rc > 0 Then PC ← [A] Else PC ← PC +1
-                        if (isRegisterValid(ir.r2) && isAddressValid(ir.p) && isAddressValid(m[ir.p].p)) {
+                        if (isRegisterValid(ir.r2) && isAddressValid(traduzEndereco(ir.p)) && isAddressValid(traduzEndereco(m[ir.p].p))) {
                             if (reg[ir.r2] > 0) {
-                                pc = m[ir.p].p;
+                                pc = m[traduzEndereco(ir.p)].p;
                             } else {
                                 pc++;
                             }
@@ -288,9 +299,9 @@ public class Sistema {
                             break;
 
                     case JMPILM: // If Rc < 0 Then PC ← [A] Else PC ← PC +1
-                        if (isRegisterValid(ir.r2) && isAddressValid(ir.p) && isAddressValid(m[ir.p].p)) {
+                        if (isRegisterValid(ir.r2) && isAddressValid(traduzEndereco(ir.p)) && isAddressValid(traduzEndereco(m[ir.p].p))) {
                             if (reg[ir.r2] < 0) {
-                                pc = m[ir.p].p;
+                                pc = m[traduzEndereco(ir.p)].p;
                             } else {
                                 pc++;
                             }
@@ -299,9 +310,9 @@ public class Sistema {
                             break;
 
                     case JMPIEM: // If Rc = 0 Then PC ← [A] Else PC ← PC +1
-                        if (isRegisterValid(ir.r2) && isAddressValid(ir.p) && isAddressValid(m[ir.p].p)) {
+                        if (isRegisterValid(ir.r2) && isAddressValid(traduzEndereco(ir.p)) && isAddressValid(traduzEndereco(m[ir.p].p))) {
                             if (reg[ir.r2] == 0) {
-                                pc = m[ir.p].p;
+                                pc = m[traduzEndereco(ir.p)].p;
                             } else {
                                 pc++;
                             }
@@ -311,7 +322,7 @@ public class Sistema {
 
 
                     case JMPIE: // If Rc = 0 Then PC ← Rs Else PC ← PC +1
-                        if (isRegisterValid(ir.r1) && isRegisterValid(ir.r2) && isAddressValid(reg[ir.r1])) {
+                        if (isRegisterValid(ir.r1) && isRegisterValid(ir.r2) && isAddressValid(traduzEndereco(reg[ir.r1]))) {
                             if (reg[ir.r2] == 0) {
                                 pc = reg[ir.r1];
                             } else {
@@ -322,7 +333,7 @@ public class Sistema {
                             break;
 
                     case JMPIL: //  PC ← Rs
-                        if (isRegisterValid(ir.r1) && isRegisterValid(ir.r2) && isAddressValid(reg[ir.r1])) {
+                        if (isRegisterValid(ir.r1) && isRegisterValid(ir.r2) && isAddressValid(traduzEndereco(reg[ir.r1]))) {
                             if (reg[ir.r2] < 0) {
                                 pc = reg[ir.r1];
                             } else {
@@ -333,8 +344,8 @@ public class Sistema {
                             break;
 
                     case JMPIM: //  PC ← [A]
-                        if (isAddressValid(m[ir.p].p) && isAddressValid(ir.p)) {
-                            pc = m[ir.p].p;
+                        if (isAddressValid(traduzEndereco(m[ir.p].p)) && isAddressValid(traduzEndereco(ir.p))) {
+                            pc = m[traduzEndereco(ir.p)].p;
                             break;
                         } else
                             break;
@@ -451,11 +462,22 @@ public class Sistema {
         }
 
         public void executa() {
-            vm.cpu.setContext(0);          // monitor seta contexto - pc aponta para inicio do programa
+            vm.cpu.setContext(0, gm.getFramesAlocados());          // monitor seta contexto - pc aponta para inicio do programa
             vm.cpu.run();                  //                         e cpu executa
             // note aqui que o monitor espera que o programa carregado acabe normalmente
             // nao ha protecoes...  o que poderia acontecer ?
         }
+
+        // deveria ter esse método para manejo correto do input, mas falta arrumar o paginas alocadas
+        /*
+        public int traduzEndereco (int endereco){
+            try {
+                return (paginasAlocadas[(endereco / 16)] * 16) + (endereco % 16);
+            } catch(ArrayIndexOutOfBoundsException e) {
+                return -1;
+            }
+        }
+         */
 
         public boolean interruptHandler(int[] registers, Word[] memory, int programCounter, Interrupts interrupts) {
             switch (interrupts) {
@@ -513,6 +535,7 @@ public class Sistema {
         private int nroFrames;
         private boolean[] tabelaPaginas;
         private int quantidadeDePaginasUsadas; // só para debug
+        public int [] framesAlocados;
 
         public GerenciadorMemoria(Word[] mem) {
             this.mem = mem;
@@ -564,7 +587,7 @@ public class Sistema {
         public int[] aloca(Word[] programa) {
             int quantidadePaginas = programa.length / tamPagina;
             if (programa.length % tamPagina > 0) quantidadePaginas++; // vê se ainda tem código além da divisão inteira
-            int[] framesAlocados = new int[quantidadePaginas];
+            framesAlocados = new int[quantidadePaginas];
             int indiceAlocado = 0;
             int indicePrograma = 0;   //indice do programa
 
@@ -603,6 +626,14 @@ public class Sistema {
             quantidadeDePaginasUsadas = quantidadeDePaginasUsadas + framesAlocados.length;
 
             return framesAlocados;
+        }
+
+        public int[] getFramesAlocados(){
+            return framesAlocados;
+        }
+
+        public boolean[] getTabelaDePaginas(){
+            return tabelaPaginas;
         }
 
         public void desaloca(PCB processo){
@@ -742,25 +773,15 @@ public class Sistema {
     public static void main(String args[]) {
         Sistema s = new Sistema();
 
-        /*
-        Testes do GM - para funcionar tem que deixar o GM como static
-        GerenciadorMemoria gm = new GerenciadorMemoria(s.vm.m);
-        gm.aloca(progs.fatorial);
-        gm.aloca(progs.bubbleSort);
-        gm.dumpMem(s.vm.m, 0, 200);
-         */
-
         // Desenvolvidos pelo professor
         //s.roda(progs.fibonacci10);           // "progs" significa acesso/referencia ao programa em memoria secundaria
         //s.roda(progs.progMinimo);
 
         // Fase 1
-        s.roda(progs.fatorial);
+        //s.roda(progs.fatorial);
         //s.roda(progs.fibonacci2);
         //s.roda(progs.fatorial2);
         //s.roda(progs.bubbleSort);
-        s.roda(progs.bubbleSort);
-        s.roda(progs.bubbleSort);
 
         // Fase 2 - Testes de Interrupções
         //s.roda(progs.invalidAddressTest);
@@ -772,6 +793,21 @@ public class Sistema {
         //s.roda(progs.trapTestInput);
         //s.roda(progs.fibonacciComOutput);
         //s.roda(progs.fatorialComInput);
+
+        // Fase 4
+        //s.roda(progs.bubbleSort);
+        //s.roda(progs.fatorial);
+        //s.roda(progs.fatorial);
+        //s.roda(progs.fatorial);
+        //s.roda(progs.fibonacci10);           // "progs" significa acesso/referencia ao programa em memoria secundaria
+        //s.roda(progs.fibonacci10);
+        //s.roda(progs.fibonacci10);
+        //s.roda(progs.progMinimo);
+        //s.roda(progs.progMinimo);
+        //s.roda(progs.progMinimo);
+        s.roda(progs.bubbleSort);
+        s.roda(progs.bubbleSort);
+        s.roda(progs.bubbleSort);
     }
 
     // -------------------------------------------------------------------------------------------------------
