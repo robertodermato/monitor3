@@ -63,16 +63,18 @@ public class Sistema {
         public int maxInt;          // criado para podermos simular overflow
         private int[] paginasAlocadas;
         private int[] tabelaDePaginas;
+        private int tamPaginaMemoria;
 
         // cria variável interrupção
         public Interrupts interrupts;
 
         private Word[] m;   // CPU acessa MEMORIA, guarda referencia 'm' a ela. memoria nao muda. ee sempre a mesma.
 
-        public CPU(Word[] _m) {     // ref a MEMORIA e interrupt handler passada na criacao da CPU
+        public CPU(Word[] _m, int tamPaginaMemoria, int maxInt) {     // ref a MEMORIA e interrupt handler passada na criacao da CPU
             m = _m;                // usa o atributo 'm' para acessar a memoria.
             reg = new int[10];        // aloca o espaço dos registradores
-            maxInt = 100_000;          // números aceitos -100_000 até 100_000
+            this.maxInt = maxInt;          // números aceitos -100_000 até 100_000
+            this.tamPaginaMemoria = tamPaginaMemoria;
         }
 
         public void setContext(int _pc, int [] paginasAlocadas) {  // no futuro esta funcao vai ter que ser
@@ -117,7 +119,7 @@ public class Sistema {
         }
 
         private boolean isAddressValid(int address) {
-            if (address < 0 || address >= 1024) {
+            if (address < 0 || address >= m.length) {
                 interrupts = Interrupts.INT_INVALID_ADDRESS;
                 return false;
             }
@@ -134,7 +136,7 @@ public class Sistema {
 
         public int traduzEndereco (int endereco){
             try {
-                return (paginasAlocadas[(endereco / 16)] * 16) + (endereco % 16);
+                return (paginasAlocadas[(endereco / tamPaginaMemoria)] * tamPaginaMemoria) + (endereco % tamPaginaMemoria);
 
             } catch(ArrayIndexOutOfBoundsException e) {
                 System.out.println("Retorno -1 do traduz");
@@ -402,10 +404,12 @@ public class Sistema {
         public int tamMem;
         public Word[] m;
         public CPU cpu;
+        private int tamanhoPaginaMemoria;
 
-        public VM() {
+        public VM(int tamMem, int tamanhoPaginaMemoria, int maxInt) {
             // memória
-            tamMem = 1024;
+            this.tamMem = tamMem;
+            this.tamanhoPaginaMemoria = tamanhoPaginaMemoria;
             m = new Word[tamMem]; // m ee a memoria
             for (int i = 0; i < tamMem; i++) {
                 m[i] = new Word(Opcode.___, -1, -1, -1);
@@ -413,7 +417,7 @@ public class Sistema {
             ;
 
             // cpu
-            cpu = new CPU(m);   // cpu acessa memória
+            cpu = new CPU(m, tamanhoPaginaMemoria, maxInt);   // cpu acessa memória
         }
 
         public int getTamMem() {
@@ -534,16 +538,16 @@ public class Sistema {
         private int tamFrame;
         private int nroFrames;
         private boolean[] tabelaPaginas;
-        private int quantidadeDePaginasUsadas; // só para debug
+        //private int quantidadeDePaginasUsadas; // só para debug
         public int [] framesAlocados;
 
-        public GerenciadorMemoria(Word[] mem) {
+        public GerenciadorMemoria(Word[] mem, int tamPagina) {
             this.mem = mem;
-            tamPagina = 16;
+            this.tamPagina = tamPagina;
             tamFrame = tamPagina;
             nroFrames = mem.length / tamPagina;
             tabelaPaginas = initFrames();
-            quantidadeDePaginasUsadas = 0;
+            //quantidadeDePaginasUsadas = 0;
         }
 
         private boolean[] initFrames() {
@@ -551,6 +555,11 @@ public class Sistema {
             for (int i = 0; i < nroFrames; i++) {
                 free[i] = true;
             }
+
+            //mockando frames ocupados
+            free[0]=false;
+            free[2]=false;
+
             return free;
         }
 
@@ -574,8 +583,16 @@ public class Sistema {
             }
         }
 
+        public int getQuantidadePaginasUsadas(){
+            int quantidade = 0;
+            for (int i=0; i<tabelaPaginas.length; i++){
+                if (tabelaPaginas[i]==false) quantidade++;
+            }
+            return quantidade;
+        }
+
         public void dumpMemoriaUsada(Word[] m, int fim) {
-            fim = quantidadeDePaginasUsadas * tamPagina;
+            fim = getQuantidadePaginasUsadas() * tamPagina;
             for (int i = 0; i < fim; i++) {
                 System.out.print(i);
                 System.out.print(":  ");
@@ -623,7 +640,6 @@ public class Sistema {
                 }
 
             }
-            quantidadeDePaginasUsadas = quantidadeDePaginasUsadas + framesAlocados.length;
 
             return framesAlocados;
         }
@@ -640,6 +656,7 @@ public class Sistema {
             int[] paginas = processo.getPaginasAlocadas();
             for(int i = 0; i < paginas.length; i ++) {
                 tabelaPaginas[paginas[i]] = true; // libera o frame
+
                 // reseta as posicoes da memória
                 for (int j = tamPagina * paginas[i]; j < tamPagina * (paginas[i] + 1); j++) {
                     mem[j].opc = Opcode.___;
@@ -734,11 +751,11 @@ public class Sistema {
     private LinkedList<PCB> prontos;
     private LinkedList<PCB> bloqueados;
 
-    public Sistema(){   // a VM com tratamento de interrupções
-        vm = new VM();
+    public Sistema(int tamMemoria, int tamPagina, int maxInt){   // a VM com tratamento de interrupções
+        vm = new VM(tamMemoria, tamPagina, maxInt);
         monitor = new Monitor();
         progs = new Programas();
-        gm = new GerenciadorMemoria(vm.m);
+        gm = new GerenciadorMemoria(vm.m, tamPagina);
         gp = new GerenciadorProcessos();
         prontos = new LinkedList();
 
@@ -755,13 +772,13 @@ public class Sistema {
         System.out.println("---------------------------------- programa carregado ");
 
         //monitor.dump(vm.m, 0, programa.length);
-        gm.dumpMemoriaUsada(vm.m, gm.quantidadeDePaginasUsadas);
+        gm.dumpMemoriaUsada(vm.m, gm.getQuantidadePaginasUsadas());
 
         monitor.executa();
         System.out.println("---------------------------------- após execucao ");
 
         //monitor.dump(vm.m, 0, programa.length);
-        gm.dumpMemoriaUsada(vm.m, gm.quantidadeDePaginasUsadas);
+        gm.dumpMemoriaUsada(vm.m, gm.getQuantidadePaginasUsadas());
 
     }
 
@@ -771,7 +788,12 @@ public class Sistema {
     // -------------------------------------------------------------------------------------------------------
     // ------------------- instancia e testa sistema
     public static void main(String args[]) {
-        Sistema s = new Sistema();
+        // Variáveis
+        int tamanhoDamemoria = 1024;
+        int tamanhoDaPaginadeMemoria = 16;
+        int maxInt = 100_000;
+
+        Sistema s = new Sistema(tamanhoDamemoria, tamanhoDaPaginadeMemoria, maxInt);
 
         // Desenvolvidos pelo professor
         //s.roda(progs.fibonacci10);           // "progs" significa acesso/referencia ao programa em memoria secundaria
@@ -794,20 +816,21 @@ public class Sistema {
         //s.roda(progs.fibonacciComOutput);
         //s.roda(progs.fatorialComInput);
 
-        // Fase 4
+        // Fase 4 - Testa o Gerenciador de Memória - mockamos frames 0 e 2 como sempre ocupados
+        s.roda(progs.bubbleSort);
+        //s.roda(progs.fatorial);
+        //s.roda(progs.fatorial);
+        //s.roda(progs.fatorial);
+        //s.roda(progs.fatorial);
+        //s.roda(progs.fibonacci10);
+        //s.roda(progs.fibonacci10);
+        //s.roda(progs.fibonacci10);
+        //s.roda(progs.progMinimo);
+        //s.roda(progs.progMinimo);
+        //s.roda(progs.progMinimo);
         //s.roda(progs.bubbleSort);
-        //s.roda(progs.fatorial);
-        //s.roda(progs.fatorial);
-        //s.roda(progs.fatorial);
-        //s.roda(progs.fibonacci10);           // "progs" significa acesso/referencia ao programa em memoria secundaria
-        //s.roda(progs.fibonacci10);
-        //s.roda(progs.fibonacci10);
-        //s.roda(progs.progMinimo);
-        //s.roda(progs.progMinimo);
-        //s.roda(progs.progMinimo);
-        s.roda(progs.bubbleSort);
-        s.roda(progs.bubbleSort);
-        s.roda(progs.bubbleSort);
+        //s.roda(progs.bubbleSort);
+        //s.roda(progs.bubbleSort);
     }
 
     // -------------------------------------------------------------------------------------------------------
